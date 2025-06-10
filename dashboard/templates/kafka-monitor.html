@@ -263,29 +263,17 @@
                 const timestamp = new Date(event.timestamp).toLocaleString();
                 
                 // Format value with unit
-                const units = {
-                    'occupancy': '%',
-                    'temperature': '°C',
-                    'light': ' lux',
-                    'distance': ' cm',
-                    'cars_per_sqm': ' cars/m²',
-                    'avg_speed': ' km/h',
-                    'wait_time': ' min',
-                    'co2_level': ' ppm',
-                    'noise_level': ' dB',
-                    'humidity': '%'
-                };
-                const value = `${event.value}${units[event.sensor_type] || ''}`;
+                const value = `${event.value.toFixed(2)} ${event.metadata.unit}`;
 
                 // Format location
-                const location = `${event.location.parking_spot_id} (Floor ${event.location.floor}, Section ${event.location.section})`;
+                const location = `${event.location.parking_lot}, Floor ${event.location.floor}, Section ${event.location.section}`;
 
                 row.innerHTML = `
                     <td class="timestamp">${timestamp}</td>
                     <td class="sensor-type">${event.sensor_type}</td>
                     <td class="value">${value}</td>
                     <td>${location}</td>
-                    <td><div class="json-view">${JSON.stringify(event, null, 2)}</div></td>
+                    <td><pre class="json-view">${JSON.stringify(event, null, 2)}</pre></td>
                 `;
                 
                 tbody.appendChild(row);

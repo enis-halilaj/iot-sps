@@ -412,10 +412,19 @@
                     'humidity': '%'
                 };
 
+                // Format value with unit
+                const value = `${alarm.value.toFixed(2)} ${units[alarm.sensor_type] || ''}`;
+
+                // Format location
+                const location = `${alarm.location.parking_lot}, Floor ${alarm.location.floor}, Section ${alarm.location.section}`;
+
+                // Create alarm message
+                const message = `WARNING: ${alarm.message}`;
+
                 card.innerHTML = `
                     <div class="alarm-header">
                         <h3 class="alarm-title">
-                            ${alarm.message}
+                            ${message}
                             <span class="badge bg-${alarm.severity === 'critical' ? 'danger' : 'warning'}">${alarm.severity.toUpperCase()}</span>
                         </h3>
                         <div class="alarm-actions">
@@ -426,10 +435,10 @@
                     </div>
                     <div class="alarm-body">
                         <h4>${alarm.sensor_type}</h4>
-                        <p>${alarm.message}</p>
+                        <p>${message}</p>
                         <div class="alarm-details">
-                            <span>Value: ${alarm.value} ${units[alarm.sensor_type] || ''}</span>
-                            <span>Location: ${alarm.location}</span>
+                            <span>Value: ${value}</span>
+                            <span>Location: ${location}</span>
                         </div>
                     </div>
                 `;
