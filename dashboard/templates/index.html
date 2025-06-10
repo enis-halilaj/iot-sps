@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Parking Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.socket.io/4.0.1/socket.io.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .sensor-card {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .chart-container {
+            position: relative;
+            height: 200px;
+            margin-bottom: 20px;
+        }
+        .event-rate-control {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid py-4">
+        <h1 class="mb-4">Smart Parking Dashboard</h1>
+        
+        <!-- Event Rate Control -->
+        <div class="event-rate-control">
+            <div class="row align-items-center">
+                <div class="col-md-6">
+                    <h3>Event Rate Control</h3>
+                    <div class="form-group">
+                        <label for="eventRateSlider">Events per Second: <span id="eventRateValue">1</span></label>
+                        <input type="range" class="form-range" id="eventRateSlider" 
+                               min="1" max="10" step="1" value="1">
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="d-flex align-items-center">
+                        <span class="badge bg-info text-dark fs-5 me-3">Current Rate: <span id="eventRate">0</span> events/sec</span>
+                        <button class="btn btn-primary" id="applyEventRate">Apply Rate</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Basic Sensors -->
+            <div class="col-md-6">
+                <div class="sensor-card">
+                    <h3>Parking Spot Occupancy</h3>
+                    <div class="chart-container">
+                        <canvas id="occupancyChart"></canvas>
+                    </div>
+                    <div class="form-group">
+                        <label>Occupancy Status:</label>
+                        <input type="range" class="form-range" min="0" max="1" step="0.1" id="occupancySlider" value="0">
+                        <span id="occupancyValue">0%</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="sensor-card">
+                    <h3>Distance to Next Car</h3>
+                    <div class="chart-container">
+                        <canvas id="distanceChart"></canvas>
+                    </div>
+                    <div class="form-group">
+                        <label>Distance (cm):</label>
+                        <input type="range" class="form-range" min="0" max="200" id="distanceSlider" value="100">
+                        <span id="distanceValue">100 cm</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="sensor-card">
+                    <h3>Parking Lot Temperature</h3>
+                    <div class="chart-container">
+                        <canvas id="temperatureChart"></canvas>
+                    </div>
+                    <div class="form-group">
+                        <label>Temperature (°C):</label>
+                        <input type="range" class="form-range" min="-10" max="50" id="temperatureSlider" value="25">
+                        <span id="temperatureValue">25°C</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="sensor-card">
+                    <h3>Light Level</h3>
+                    <div class="chart-container">
+                        <canvas id="lightChart"></canvas>
+                    </div>
+                    <div class="form-group">
+                        <label>Light Level (lux):</label>
+                        <input type="range" class="form-range" min="0" max="1000" id="lightSlider" value="500">
+                        <span id="lightValue">500 lux</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Traffic Sensors -->
+            <div class="col-md-6">
+                <div class="sensor-card">
+                    <h3>Car Density</h3>
+                    <div class="chart-container">
+                        <canvas id="cars_per_sqmChart"></canvas>
+                    </div>
+                    <div class="form-group">
+                        <label>Density (cars/m²):</label>
+                        <input type="range" class="form-range" min="0" max="0.5" step="0.01" id="cars_per_sqmSlider" value="0.2">
+                        <span id="cars_per_sqmValue">0.2 cars/m²</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="sensor-card">
+                    <h3>Average Speed</h3>
+                    <div class="chart-container">
+                        <canvas id="avg_speedChart"></canvas>
+                    </div>
+                    <div class="form-group">
+                        <label>Speed (km/h):</label>
+                        <input type="range" class="form-range" min="0" max="20" step="0.1" id="avg_speedSlider" value="5">
+                        <span id="avg_speedValue">5 km/h</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="sensor-card">
+                    <h3>Wait Time</h3>
+                    <div class="chart-container">
+                        <canvas id="wait_timeChart"></canvas>
+                    </div>
+                    <div class="form-group">
+                        <label>Wait Time (min):</label>
+                        <input type="range" class="form-range" min="0" max="30" step="0.5" id="wait_timeSlider" value="5">
+                        <span id="wait_timeValue">5 min</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Environmental Sensors -->
+            <div class="col-md-6">
+                <div class="sensor-card">
+                    <h3>CO2 Level</h3>
+                    <div class="chart-container">
+                        <canvas id="co2_levelChart"></canvas>
+                    </div>
+                    <div class="form-group">
+                        <label>CO2 (ppm):</label>
+                        <input type="range" class="form-range" min="300" max="2000" id="co2_levelSlider" value="800">
+                        <span id="co2_levelValue">800 ppm</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="sensor-card">
+                    <h3>Noise Level</h3>
+                    <div class="chart-container">
+                        <canvas id="noise_levelChart"></canvas>
+                    </div>
+                    <div class="form-group">
+                        <label>Noise (dB):</label>
+                        <input type="range" class="form-range" min="30" max="100" step="0.1" id="noise_levelSlider" value="45">
+                        <span id="noise_levelValue">45 dB</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="sensor-card">
+                    <h3>Humidity</h3>
+                    <div class="chart-container">
+                        <canvas id="humidityChart"></canvas>
+                    </div>
+                    <div class="form-group">
+                        <label>Humidity (%):</label>
+                        <input type="range" class="form-range" min="0" max="100" id="humiditySlider" value="60">
+                        <span id="humidityValue">60%</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize WebSocket connection
+        const socket = io();
+
+        // Initialize charts
+        const charts = {
+            occupancy: createChart('occupancyChart', 'Occupancy Status'),
+            distance: createChart('distanceChart', 'Distance (cm)'),
+            temperature: createChart('temperatureChart', 'Temperature (°C)'),
+            light: createChart('lightChart', 'Light Level (lux)'),
+            cars_per_sqm: createChart('cars_per_sqmChart', 'Car Density (cars/m²)'),
+            avg_speed: createChart('avg_speedChart', 'Average Speed (km/h)'),
+            wait_time: createChart('wait_timeChart', 'Wait Time (min)'),
+            co2_level: createChart('co2_levelChart', 'CO2 Level (ppm)'),
+            noise_level: createChart('noise_levelChart', 'Noise Level (dB)'),
+            humidity: createChart('humidityChart', 'Humidity (%)')
+        };
+
+        // Initialize data arrays
+        const dataPoints = {
+            occupancy: [],
+            distance: [],
+            temperature: [],
+            light: [],
+            cars_per_sqm: [],
+            avg_speed: [],
+            wait_time: [],
+            co2_level: [],
+            noise_level: [],
+            humidity: []
+        };
+
+        // Unit mapping for display
+        const unitMapping = {
+            'occupancy': '%',
+            'distance': 'cm',
+            'temperature': '°C',
+            'light': 'lux',
+            'cars_per_sqm': 'cars/m²',
+            'avg_speed': 'km/h',
+            'wait_time': 'min',
+            'co2_level': 'ppm',
+            'noise_level': 'dB',
+            'humidity': '%'
+        };
+
+        // Event Rate Control
+        const eventRateSlider = document.getElementById('eventRateSlider');
+        const eventRateValue = document.getElementById('eventRateValue');
+        const applyEventRateBtn = document.getElementById('applyEventRate');
+
+        eventRateSlider.addEventListener('input', function() {
+            eventRateValue.textContent = this.value;
+        });
+
+        applyEventRateBtn.addEventListener('click', function() {
+            const newRate = parseInt(eventRateSlider.value);
+            socket.emit('update_event_rate', { events_per_sec: newRate }, { namespace: '/simulator' });
+        });
+
+        // Create chart function
+        function createChart(canvasId, label) {
+            return new Chart(document.getElementById(canvasId), {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: label,
+                        data: [],
+                        borderColor: 'rgb(75, 192, 192)',
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        // Handle sensor updates from Kafka
+        socket.on('sensor_updated', function(data) {
+            console.log('Received sensor update:', data);
+            const sensorType = data.sensor_type;
+            const value = data.value;
+            
+            // Update slider and value display
+            const slider = document.getElementById(`${sensorType}Slider`);
+            const valueDisplay = document.getElementById(`${sensorType}Value`);
+            
+            if (slider && valueDisplay) {
+                slider.value = value;
+                valueDisplay.textContent = `${value} ${unitMapping[sensorType]}`;
+            }
+            
+            // Update chart
+            if (charts[sensorType]) {
+                const chart = charts[sensorType];
+                const now = new Date().toLocaleTimeString();
+                
+                // Add new data point
+                dataPoints[sensorType].push(value);
+                chart.data.labels.push(now);
+                
+                // Keep only last 20 points
+                if (dataPoints[sensorType].length > 20) {
+                    dataPoints[sensorType].shift();
+                    chart.data.labels.shift();
+                }
+                
+                // Update chart
+                chart.data.datasets[0].data = dataPoints[sensorType];
+                chart.update();
+            }
+        });
+
+        // Handle slider changes
+        document.querySelectorAll('input[type="range"]').forEach(slider => {
+            slider.addEventListener('change', function() {
+                const sensorType = this.id.replace('Slider', '');
+                const value = parseFloat(this.value);
+                
+                // Emit update to server
+                socket.emit('update_sensor', {
+                    sensor_type: sensorType,
+                    value: value
+                });
+            });
+        });
+
+        // Initialize sliders with default values
+        Object.keys(charts).forEach(sensorType => {
+            const slider = document.getElementById(`${sensorType}Slider`);
+            const valueDisplay = document.getElementById(`${sensorType}Value`);
+            if (slider && valueDisplay) {
+                const value = parseFloat(slider.value);
+                valueDisplay.textContent = `${value} ${unitMapping[sensorType]}`;
+            }
+        });
+
+        // Listen for event rate updates
+        socket.on('event_rate', (data) => {
+            document.getElementById('eventRate').textContent = data.events_per_sec;
+        });
+    </script>
+</body>
+</html> 

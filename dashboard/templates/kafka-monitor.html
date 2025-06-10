@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kafka Event Monitor</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.socket.io/4.0.1/socket.io.min.js"></script>
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        .container-fluid {
+            padding: 20px;
+        }
+        .event-table {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-top: 20px;
+        }
+        .event-row {
+            transition: background-color 0.3s ease;
+        }
+        .event-row:hover {
+            background-color: #f8f9fa;
+        }
+        .event-row.new {
+            background-color: #e3f2fd;
+        }
+        .stats-card {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .filter-section {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .json-view {
+            font-family: monospace;
+            white-space: pre-wrap;
+            background-color: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .timestamp {
+            color: #6c757d;
+            font-size: 0.9em;
+        }
+        .sensor-type {
+            font-weight: bold;
+        }
+        .value {
+            color: #28a745;
+        }
+        .unit {
+            color: #6c757d;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <h1 class="mb-4">Kafka Event Monitor</h1>
+        
+        <!-- Stats Cards -->
+        <div class="row">
+            <div class="col-md-3">
+                <div class="stats-card">
+                    <h5>Events per Second</h5>
+                    <h2 id="eventRate">0</h2>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stats-card">
+                    <h5>Total Events</h5>
+                    <h2 id="totalEvents">0</h2>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stats-card">
+                    <h5>Active Sensors</h5>
+                    <h2 id="activeSensors">0</h2>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stats-card">
+                    <h5>Last Update</h5>
+                    <h2 id="lastUpdate">-</h2>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="filter-section">
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="form-group">
+                        <label>Sensor Type</label>
+                        <select class="form-select" id="sensorTypeFilter">
+                            <option value="">All Sensors</option>
+                            <option value="occupancy">Occupancy</option>
+                            <option value="distance">Distance</option>
+                            <option value="temperature">Temperature</option>
+                            <option value="light">Light</option>
+                            <option value="cars_per_sqm">Car Density</option>
+                            <option value="avg_speed">Average Speed</option>
+                            <option value="wait_time">Wait Time</option>
+                            <option value="co2_level">CO2 Level</option>
+                            <option value="noise_level">Noise Level</option>
+                            <option value="humidity">Humidity</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="form-group">
+                        <label>Auto-scroll</label>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="autoScroll" checked>
+                            <label class="form-check-label" for="autoScroll">Enable</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="form-group">
+                        <label>Max Events</label>
+                        <select class="form-select" id="maxEvents">
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                            <option value="200">200</option>
+                            <option value="500">500</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="form-group">
+                        <label>Refresh Rate</label>
+                        <select class="form-select" id="refreshRate">
+                            <option value="1000">1 second</option>
+                            <option value="500">500ms</option>
+                            <option value="100">100ms</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Events Table -->
+        <div class="event-table">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Sensor Type</th>
+                        <th>Value</th>
+                        <th>Location</th>
+                        <th>Raw JSON</th>
+                    </tr>
+                </thead>
+                <tbody id="eventTableBody">
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let events = [];
+        let totalEvents = 0;
+        const activeSensors = new Set();
+        let lastUpdate = new Date();
+
+        // Initialize the page
+        document.addEventListener('DOMContentLoaded', () => {
+            // Set up event listeners for filters
+            document.getElementById('sensorTypeFilter').addEventListener('change', filterEvents);
+            document.getElementById('maxEvents').addEventListener('change', filterEvents);
+            document.getElementById('refreshRate').addEventListener('change', updateRefreshRate);
+        });
+
+        // Handle incoming Kafka events
+        socket.on('kafka_event', (event) => {
+            const now = new Date();
+            event.received_at = now.toISOString();
+            events.unshift(event);
+            totalEvents++;
+            activeSensors.add(event.sensor_type);
+            lastUpdate = now;
+
+            // Update stats
+            updateStats();
+            
+            // Update table
+            filterEvents();
+        });
+
+        // Update event rate
+        socket.on('event_rate', (data) => {
+            document.getElementById('eventRate').textContent = data.events_per_sec;
+        });
+
+        function updateStats() {
+            document.getElementById('totalEvents').textContent = totalEvents;
+            document.getElementById('activeSensors').textContent = activeSensors.size;
+            document.getElementById('lastUpdate').textContent = lastUpdate.toLocaleTimeString();
+        }
+
+        function filterEvents() {
+            const maxEvents = parseInt(document.getElementById('maxEvents').value);
+            const sensorType = document.getElementById('sensorTypeFilter').value;
+            const autoScroll = document.getElementById('autoScroll').checked;
+
+            // Filter events
+            let filteredEvents = events;
+            if (sensorType) {
+                filteredEvents = events.filter(e => e.sensor_type === sensorType);
+            }
+            filteredEvents = filteredEvents.slice(0, maxEvents);
+
+            // Update table
+            const tbody = document.getElementById('eventTableBody');
+            tbody.innerHTML = '';
+
+            filteredEvents.forEach(event => {
+                const row = document.createElement('tr');
+                row.className = 'event-row new';
+                
+                // Format timestamp
+                const timestamp = new Date(event.timestamp).toLocaleString();
+                
+                // Format value with unit
+                const units = {
+                    'occupancy': '%',
+                    'temperature': '°C',
+                    'light': ' lux',
+                    'distance': ' cm',
+                    'cars_per_sqm': ' cars/m²',
+                    'avg_speed': ' km/h',
+                    'wait_time': ' min',
+                    'co2_level': ' ppm',
+                    'noise_level': ' dB',
+                    'humidity': '%'
+                };
+                const value = `${event.value}${units[event.sensor_type] || ''}`;
+
+                // Format location
+                const location = `${event.location.parking_spot_id} (Floor ${event.location.floor}, Section ${event.location.section})`;
+
+                row.innerHTML = `
+                    <td class="timestamp">${timestamp}</td>
+                    <td class="sensor-type">${event.sensor_type}</td>
+                    <td class="value">${value}</td>
+                    <td>${location}</td>
+                    <td><div class="json-view">${JSON.stringify(event, null, 2)}</div></td>
+                `;
+                
+                tbody.appendChild(row);
+            });
+
+            // Remove 'new' class after animation
+            setTimeout(() => {
+                document.querySelectorAll('.event-row.new').forEach(row => {
+                    row.classList.remove('new');
+                });
+            }, 1000);
+
+            // Auto-scroll if enabled
+            if (autoScroll) {
+                window.scrollTo(0, 0);
+            }
+        }
+
+        function updateRefreshRate() {
+            const rate = parseInt(document.getElementById('refreshRate').value);
+            // Implement refresh rate update logic if needed
+        }
+    </script>
+</body>
+</html> 

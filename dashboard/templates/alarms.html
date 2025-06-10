@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sensor Alarms Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.socket.io/4.0.1/socket.io.min.js"></script>
+    <style>
+        body {
+            background-color: #f8f9fa;
+        }
+        .container-fluid {
+            padding: 20px;
+        }
+        .alarm-card {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 15px;
+            transition: all 0.3s ease;
+        }
+        .alarm-card.critical {
+            border-left: 5px solid #dc3545;
+        }
+        .alarm-card.warning {
+            border-left: 5px solid #ffc107;
+        }
+        .alarm-card.info {
+            border-left: 5px solid #0dcaf0;
+        }
+        .alarm-header {
+            padding: 15px;
+            border-bottom: 1px solid #dee2e6;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .alarm-body {
+            padding: 15px;
+        }
+        .alarm-footer {
+            padding: 10px 15px;
+            background-color: #f8f9fa;
+            border-top: 1px solid #dee2e6;
+            font-size: 0.9em;
+            color: #6c757d;
+        }
+        .alarm-title {
+            margin: 0;
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+        .alarm-value {
+            font-size: 1.5em;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .alarm-description {
+            color: #6c757d;
+            margin-bottom: 10px;
+        }
+        .alarm-location {
+            font-size: 0.9em;
+            color: #495057;
+        }
+        .alarm-timestamp {
+            font-size: 0.8em;
+            color: #6c757d;
+        }
+        .alarm-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .stats-card {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .filter-section {
+            background: white;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .badge {
+            font-size: 0.9em;
+            padding: 5px 10px;
+        }
+        .alarm-card.new {
+            animation: highlight 2s ease-out;
+        }
+        @keyframes highlight {
+            0% { background-color: #fff3cd; }
+            100% { background-color: white; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <h1 class="mb-4">Sensor Alarms Dashboard</h1>
+        
+        <!-- Stats Cards -->
+        <div class="row">
+            <div class="col-md-3">
+                <div class="stats-card">
+                    <h5>Active Alarms</h5>
+                    <h2 id="activeAlarms">0</h2>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stats-card">
+                    <h5>Critical Alarms</h5>
+                    <h2 id="criticalAlarms">0</h2>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stats-card">
+                    <h5>Warning Alarms</h5>
+                    <h2 id="warningAlarms">0</h2>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stats-card">
+                    <h5>Last Update</h5>
+                    <h2 id="lastUpdate">-</h2>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="filter-section">
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="form-group">
+                        <label>Alarm Severity</label>
+                        <select class="form-select" id="severityFilter">
+                            <option value="">All Severities</option>
+                            <option value="critical">Critical</option>
+                            <option value="warning">Warning</option>
+                            <option value="info">Info</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="form-group">
+                        <label>Sensor Type</label>
+                        <select class="form-select" id="sensorTypeFilter">
+                            <option value="">All Sensors</option>
+                            <option value="occupancy">Occupancy</option>
+                            <option value="distance">Distance</option>
+                            <option value="temperature">Temperature</option>
+                            <option value="light">Light</option>
+                            <option value="cars_per_sqm">Car Density</option>
+                            <option value="avg_speed">Average Speed</option>
+                            <option value="wait_time">Wait Time</option>
+                            <option value="co2_level">CO2 Level</option>
+                            <option value="noise_level">Noise Level</option>
+                            <option value="humidity">Humidity</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="form-group">
+                        <label>Auto-scroll</label>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="autoScroll" checked>
+                            <label class="form-check-label" for="autoScroll">Enable</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="form-group">
+                        <label>Max Alarms</label>
+                        <select class="form-select" id="maxAlarms">
+                            <option value="10">10</option>
+                            <option value="20">20</option>
+                            <option value="50">50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Alarms Container -->
+        <div id="alarmsContainer">
+            <!-- Alarms will be dynamically inserted here -->
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let alarms = [];
+        let lastUpdate = new Date();
+
+        // Alarm thresholds configuration
+        const alarmThresholds = {
+            distance: {
+                critical: { threshold: 0, message: "CRITICAL: Collision detected!" },
+                warning: { threshold: 20, message: "WARNING: Close proximity detected" }
+            },
+            temperature: {
+                critical: { threshold: 40, message: "CRITICAL: High temperature detected" },
+                warning: { threshold: 35, message: "WARNING: Elevated temperature" }
+            },
+            co2_level: {
+                critical: { threshold: 1500, message: "CRITICAL: High CO2 levels" },
+                warning: { threshold: 1000, message: "WARNING: Elevated CO2 levels" }
+            },
+            noise_level: {
+                critical: { threshold: 80, message: "CRITICAL: Excessive noise levels" },
+                warning: { threshold: 70, message: "WARNING: High noise levels" }
+            },
+            cars_per_sqm: {
+                critical: { threshold: 0.4, message: "CRITICAL: Parking area overcrowded" },
+                warning: { threshold: 0.3, message: "WARNING: High parking density" }
+            },
+            avg_speed: {
+                critical: { threshold: 15, message: "CRITICAL: Excessive speed detected" },
+                warning: { threshold: 10, message: "WARNING: High speed detected" }
+            },
+            wait_time: {
+                critical: { threshold: 20, message: "CRITICAL: Long wait times" },
+                warning: { threshold: 15, message: "WARNING: Extended wait times" }
+            }
+        };
+
+        // Initialize the page
+        document.addEventListener('DOMContentLoaded', () => {
+            // Set up event listeners for filters
+            document.getElementById('severityFilter').addEventListener('change', filterAlarms);
+            document.getElementById('sensorTypeFilter').addEventListener('change', filterAlarms);
+            document.getElementById('maxAlarms').addEventListener('change', filterAlarms);
+        });
+
+        // Handle incoming Kafka events
+        socket.on('kafka_event', (event) => {
+            checkForAlarms(event);
+        });
+
+        function checkForAlarms(event) {
+            const sensorType = event.sensor_type;
+            const value = event.value;
+            const thresholds = alarmThresholds[sensorType];
+
+            if (thresholds) {
+                // For sensors where higher values are worse (temperature, noise, etc.)
+                if (['temperature', 'co2_level', 'noise_level', 'cars_per_sqm', 'avg_speed', 'wait_time'].includes(sensorType)) {
+                    // Check critical threshold
+                    if (value >= thresholds.critical.threshold) {
+                        createAlarm(event, 'critical', thresholds.critical.message);
+                    }
+                    // Check warning threshold
+                    else if (value >= thresholds.warning.threshold) {
+                        createAlarm(event, 'warning', thresholds.warning.message);
+                    }
+                }
+                // For sensors where lower values are worse (distance)
+                else if (sensorType === 'distance') {
+                    // Check critical threshold
+                    if (value <= thresholds.critical.threshold) {
+                        createAlarm(event, 'critical', thresholds.critical.message);
+                    }
+                    // Check warning threshold
+                    else if (value <= thresholds.warning.threshold) {
+                        createAlarm(event, 'warning', thresholds.warning.message);
+                    }
+                }
+            }
+        }
+
+        function createAlarm(event, severity, message) {
+            const alarm = {
+                id: Date.now(),
+                timestamp: new Date(),
+                sensor_type: event.sensor_type,
+                value: event.value,
+                severity: severity,
+                message: message,
+                location: event.location,
+                acknowledged: false
+            };
+
+            alarms.unshift(alarm);
+            lastUpdate = new Date();
+            updateStats();
+            filterAlarms();
+        }
+
+        function updateStats() {
+            const criticalCount = alarms.filter(a => a.severity === 'critical' && !a.acknowledged).length;
+            const warningCount = alarms.filter(a => a.severity === 'warning' && !a.acknowledged).length;
+            const totalActive = criticalCount + warningCount;
+
+            document.getElementById('activeAlarms').textContent = totalActive;
+            document.getElementById('criticalAlarms').textContent = criticalCount;
+            document.getElementById('warningAlarms').textContent = warningCount;
+            document.getElementById('lastUpdate').textContent = lastUpdate.toLocaleTimeString();
+        }
+
+        function filterAlarms() {
+            const maxAlarms = parseInt(document.getElementById('maxAlarms').value);
+            const severity = document.getElementById('severityFilter').value;
+            const sensorType = document.getElementById('sensorTypeFilter').value;
+            const autoScroll = document.getElementById('autoScroll').checked;
+
+            // Filter alarms
+            let filteredAlarms = alarms;
+            if (severity) {
+                filteredAlarms = filteredAlarms.filter(a => a.severity === severity);
+            }
+            if (sensorType) {
+                filteredAlarms = filteredAlarms.filter(a => a.sensor_type === sensorType);
+            }
+            filteredAlarms = filteredAlarms.slice(0, maxAlarms);
+
+            // Update display
+            const container = document.getElementById('alarmsContainer');
+            container.innerHTML = '';
+
+            filteredAlarms.forEach(alarm => {
+                const card = document.createElement('div');
+                card.className = `alarm-card ${alarm.severity} new`;
+                
+                const units = {
+                    'occupancy': '%',
+                    'temperature': '°C',
+                    'light': ' lux',
+                    'distance': ' cm',
+                    'cars_per_sqm': ' cars/m²',
+                    'avg_speed': ' km/h',
+                    'wait_time': ' min',
+                    'co2_level': ' ppm',
+                    'noise_level': ' dB',
+                    'humidity': '%'
+                };
+
+                card.innerHTML = `
+                    <div class="alarm-header">
+                        <h3 class="alarm-title">
+                            ${alarm.message}
+                            <span class="badge bg-${alarm.severity === 'critical' ? 'danger' : 'warning'}">${alarm.severity.toUpperCase()}</span>
+                        </h3>
+                        <div class="alarm-actions">
+                            ${!alarm.acknowledged ? `
+                                <button class="btn btn-sm btn-outline-primary" onclick="acknowledgeAlarm(${alarm.id})">
+                                    Acknowledge
+                                </button>
+                            ` : `
+                                <span class="badge bg-success">Acknowledged</span>
+                            `}
+                        </div>
+                    </div>
+                    <div class="alarm-body">
+                        <div class="alarm-value">
+                            ${alarm.value}${units[alarm.sensor_type] || ''}
+                        </div>
+                        <div class="alarm-description">
+                            Sensor: ${alarm.sensor_type}
+                        </div>
+                        <div class="alarm-location">
+                            Location: ${alarm.location.parking_spot_id} (Floor ${alarm.location.floor}, Section ${alarm.location.section})
+                        </div>
+                    </div>
+                    <div class="alarm-footer">
+                        <span class="alarm-timestamp">
+                            ${alarm.timestamp.toLocaleString()}
+                        </span>
+                    </div>
+                `;
+                
+                container.appendChild(card);
+            });
+
+            // Remove 'new' class after animation
+            setTimeout(() => {
+                document.querySelectorAll('.alarm-card.new').forEach(card => {
+                    card.classList.remove('new');
+                });
+            }, 2000);
+
+            // Auto-scroll if enabled
+            if (autoScroll) {
+                window.scrollTo(0, 0);
+            }
+        }
+
+        function acknowledgeAlarm(alarmId) {
+            const alarm = alarms.find(a => a.id === alarmId);
+            if (alarm) {
+                alarm.acknowledged = true;
+                updateStats();
+                filterAlarms();
+            }
+        }
+    </script>
+</body>
+</html> 

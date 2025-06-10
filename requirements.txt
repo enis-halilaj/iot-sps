@@ -1,0 +1,5 @@
+kafka-python==2.0.2
+faker==19.3.0
+python-dotenv==1.0.0
+cassandra-driver==3.28.0
+pyspark==3.4.1 
