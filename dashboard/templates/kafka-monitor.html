@@ -172,11 +172,32 @@
     </div>
 
     <script>
-        const socket = io();
+        // Initialize WebSocket connection
+        const socket = io('/', {
+            transports: ['websocket'],
+            upgrade: false
+        });
+
+        // Log connection status
+        socket.on('connect', () => {
+            console.log('Connected to WebSocket server');
+        });
+
+        socket.on('disconnect', () => {
+            console.log('Disconnected from WebSocket server');
+        });
+
+        socket.on('connect_error', (error) => {
+            console.error('WebSocket connection error:', error);
+        });
+
         let events = [];
         let totalEvents = 0;
         const activeSensors = new Set();
         let lastUpdate = new Date();
+        let eventsReceived = 0;
+        let eventsPerSecond = 0;
+        let lastUpdateTime = new Date();
 
         // Initialize the page
         document.addEventListener('DOMContentLoaded', () => {
@@ -187,31 +208,36 @@
         });
 
         // Handle incoming Kafka events
-        socket.on('kafka_event', (event) => {
-            const now = new Date();
-            event.received_at = now.toISOString();
-            events.unshift(event);
-            totalEvents++;
-            activeSensors.add(event.sensor_type);
-            lastUpdate = now;
-
-            // Update stats
-            updateStats();
+        socket.on('sensor_updated', function(data) {
+            console.log('Received event:', data);
             
-            // Update table
+            // Update statistics
+            eventsReceived++;
+            const now = new Date();
+            const timeDiff = (now - lastUpdateTime) / 1000; // in seconds
+            if (timeDiff >= 1) {
+                eventsPerSecond = eventsReceived / timeDiff;
+                lastUpdateTime = now;
+                eventsReceived = 0;
+            }
+            
+            // Update stats display
+            document.getElementById('eventRate').textContent = eventsPerSecond.toFixed(1);
+            document.getElementById('totalEvents').textContent = ++totalEvents;
+            document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+            
+            // Add to active sensors if new
+            if (!activeSensors.has(data.sensor_type)) {
+                activeSensors.add(data.sensor_type);
+                document.getElementById('activeSensors').textContent = activeSensors.size;
+            }
+            
+            // Add event to events array
+            events.unshift(data);
+            
+            // Update display
             filterEvents();
         });
-
-        // Update event rate
-        socket.on('event_rate', (data) => {
-            document.getElementById('eventRate').textContent = data.events_per_sec;
-        });
-
-        function updateStats() {
-            document.getElementById('totalEvents').textContent = totalEvents;
-            document.getElementById('activeSensors').textContent = activeSensors.size;
-            document.getElementById('lastUpdate').textContent = lastUpdate.toLocaleTimeString();
-        }
 
         function filterEvents() {
             const maxEvents = parseInt(document.getElementById('maxEvents').value);

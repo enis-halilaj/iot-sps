@@ -193,9 +193,35 @@
     </div>
 
     <script>
-        const socket = io();
+        // Initialize WebSocket connection
+        const socket = io('/', {
+            transports: ['websocket'],
+            upgrade: false
+        });
+
+        // Log connection status
+        socket.on('connect', () => {
+            console.log('Connected to WebSocket server');
+        });
+
+        socket.on('disconnect', () => {
+            console.log('Disconnected from WebSocket server');
+        });
+
+        socket.on('connect_error', (error) => {
+            console.error('WebSocket connection error:', error);
+        });
+
         let alarms = [];
         let lastUpdate = new Date();
+        let eventsReceived = 0;
+        let lastUpdateTime = new Date();
+        let eventsPerSecond = 0;
+        let totalEvents = 0;
+        let criticalAlarms = 0;
+        let warningAlarms = 0;
+        let maxAlarms = 20;
+        let autoScroll = true;
 
         // Alarm thresholds configuration
         const alarmThresholds = {
@@ -238,11 +264,33 @@
         });
 
         // Handle incoming Kafka events
-        socket.on('kafka_event', (event) => {
-            checkForAlarms(event);
+        socket.on('sensor_updated', function(data) {
+            console.log('Received event:', data);
+            
+            // Update statistics
+            eventsReceived++;
+            const now = new Date();
+            const timeDiff = (now - lastUpdateTime) / 1000; // in seconds
+            if (timeDiff >= 1) {
+                eventsPerSecond = eventsReceived / timeDiff;
+                lastUpdateTime = now;
+                eventsReceived = 0;
+            }
+            
+            // Update stats display
+            document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+            
+            // Check for alarms
+            const newAlarms = checkForAlarms(data);
+            
+            // Add new alarms to the display
+            newAlarms.forEach(alarm => {
+                createAlarm(alarm);
+            });
         });
 
         function checkForAlarms(event) {
+            const alarms = [];
             const sensorType = event.sensor_type;
             const value = event.value;
             const thresholds = alarmThresholds[sensorType];
@@ -252,40 +300,65 @@
                 if (['temperature', 'co2_level', 'noise_level', 'cars_per_sqm', 'avg_speed', 'wait_time'].includes(sensorType)) {
                     // Check critical threshold
                     if (value >= thresholds.critical.threshold) {
-                        createAlarm(event, 'critical', thresholds.critical.message);
+                        alarms.push({
+                            sensor_type: sensorType,
+                            value: value,
+                            severity: 'critical',
+                            message: thresholds.critical.message,
+                            location: event.location
+                        });
                     }
                     // Check warning threshold
                     else if (value >= thresholds.warning.threshold) {
-                        createAlarm(event, 'warning', thresholds.warning.message);
+                        alarms.push({
+                            sensor_type: sensorType,
+                            value: value,
+                            severity: 'warning',
+                            message: thresholds.warning.message,
+                            location: event.location
+                        });
                     }
                 }
                 // For sensors where lower values are worse (distance)
                 else if (sensorType === 'distance') {
                     // Check critical threshold
                     if (value <= thresholds.critical.threshold) {
-                        createAlarm(event, 'critical', thresholds.critical.message);
+                        alarms.push({
+                            sensor_type: sensorType,
+                            value: value,
+                            severity: 'critical',
+                            message: thresholds.critical.message,
+                            location: event.location
+                        });
                     }
                     // Check warning threshold
                     else if (value <= thresholds.warning.threshold) {
-                        createAlarm(event, 'warning', thresholds.warning.message);
+                        alarms.push({
+                            sensor_type: sensorType,
+                            value: value,
+                            severity: 'warning',
+                            message: thresholds.warning.message,
+                            location: event.location
+                        });
                     }
                 }
             }
+            return alarms;
         }
 
-        function createAlarm(event, severity, message) {
-            const alarm = {
+        function createAlarm(alarm) {
+            const alarmObj = {
                 id: Date.now(),
                 timestamp: new Date(),
-                sensor_type: event.sensor_type,
-                value: event.value,
-                severity: severity,
-                message: message,
-                location: event.location,
+                sensor_type: alarm.sensor_type,
+                value: alarm.value,
+                severity: alarm.severity,
+                message: alarm.message,
+                location: alarm.location,
                 acknowledged: false
             };
 
-            alarms.unshift(alarm);
+            alarms.unshift(alarmObj);
             lastUpdate = new Date();
             updateStats();
             filterAlarms();
@@ -347,56 +420,51 @@
                         </h3>
                         <div class="alarm-actions">
                             ${!alarm.acknowledged ? `
-                                <button class="btn btn-sm btn-outline-primary" onclick="acknowledgeAlarm(${alarm.id})">
-                                    Acknowledge
-                                </button>
-                            ` : `
-                                <span class="badge bg-success">Acknowledged</span>
-                            `}
+                                <button class="btn btn-sm btn-outline-light" onclick="acknowledgeAlarm(this)">Acknowledge</button>
+                            ` : ''}
                         </div>
                     </div>
                     <div class="alarm-body">
-                        <div class="alarm-value">
-                            ${alarm.value}${units[alarm.sensor_type] || ''}
+                        <h4>${alarm.sensor_type}</h4>
+                        <p>${alarm.message}</p>
+                        <div class="alarm-details">
+                            <span>Value: ${alarm.value} ${units[alarm.sensor_type] || ''}</span>
+                            <span>Location: ${alarm.location}</span>
                         </div>
-                        <div class="alarm-description">
-                            Sensor: ${alarm.sensor_type}
-                        </div>
-                        <div class="alarm-location">
-                            Location: ${alarm.location.parking_spot_id} (Floor ${alarm.location.floor}, Section ${alarm.location.section})
-                        </div>
-                    </div>
-                    <div class="alarm-footer">
-                        <span class="alarm-timestamp">
-                            ${alarm.timestamp.toLocaleString()}
-                        </span>
                     </div>
                 `;
                 
-                container.appendChild(card);
+                // Add to container
+                const container = document.getElementById('alarmsContainer');
+                container.insertBefore(card, container.firstChild);
+                
+                // Update statistics
+                if (alarm.severity === 'critical') {
+                    criticalAlarms++;
+                } else if (alarm.severity === 'warning') {
+                    warningAlarms++;
+                }
+                document.getElementById('criticalAlarms').textContent = criticalAlarms;
+                document.getElementById('warningAlarms').textContent = warningAlarms;
+                
+                // Remove old alarms if exceeding max alarms
+                while (container.children.length > maxAlarms) {
+                    container.removeChild(container.lastChild);
+                }
+                
+                // Auto-scroll if enabled
+                if (autoScroll) {
+                    window.scrollTo(0, 0);
+                }
             });
-
-            // Remove 'new' class after animation
-            setTimeout(() => {
-                document.querySelectorAll('.alarm-card.new').forEach(card => {
-                    card.classList.remove('new');
-                });
-            }, 2000);
-
-            // Auto-scroll if enabled
-            if (autoScroll) {
-                window.scrollTo(0, 0);
-            }
         }
 
-        function acknowledgeAlarm(alarmId) {
-            const alarm = alarms.find(a => a.id === alarmId);
-            if (alarm) {
-                alarm.acknowledged = true;
-                updateStats();
-                filterAlarms();
-            }
+        function acknowledgeAlarm(button) {
+            const alarmElement = button.closest('.alarm');
+            alarmElement.classList.add('acknowledged');
+            button.disabled = true;
+            button.textContent = 'Acknowledged';
         }
     </script>
 </body>
-</html> 
+</html>

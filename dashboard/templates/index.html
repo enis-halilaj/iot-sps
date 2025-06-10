@@ -20,39 +20,12 @@
             height: 200px;
             margin-bottom: 20px;
         }
-        .event-rate-control {
-            background: white;
-            border-radius: 10px;
-            padding: 20px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
     </style>
 </head>
 <body>
     <div class="container-fluid py-4">
         <h1 class="mb-4">Smart Parking Dashboard</h1>
         
-        <!-- Event Rate Control -->
-        <div class="event-rate-control">
-            <div class="row align-items-center">
-                <div class="col-md-6">
-                    <h3>Event Rate Control</h3>
-                    <div class="form-group">
-                        <label for="eventRateSlider">Events per Second: <span id="eventRateValue">1</span></label>
-                        <input type="range" class="form-range" id="eventRateSlider" 
-                               min="1" max="10" step="1" value="1">
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="d-flex align-items-center">
-                        <span class="badge bg-info text-dark fs-5 me-3">Current Rate: <span id="eventRate">0</span> events/sec</span>
-                        <button class="btn btn-primary" id="applyEventRate">Apply Rate</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
         <div class="row">
             <!-- Basic Sensors -->
             <div class="col-md-6">
@@ -201,7 +174,23 @@
 
     <script>
         // Initialize WebSocket connection
-        const socket = io();
+        const socket = io('/', {
+            transports: ['websocket'],
+            upgrade: false
+        });
+
+        // Log connection status
+        socket.on('connect', () => {
+            console.log('Connected to WebSocket server');
+        });
+
+        socket.on('disconnect', () => {
+            console.log('Disconnected from WebSocket server');
+        });
+
+        socket.on('connect_error', (error) => {
+            console.error('WebSocket connection error:', error);
+        });
 
         // Initialize charts
         const charts = {
@@ -245,20 +234,6 @@
             'humidity': '%'
         };
 
-        // Event Rate Control
-        const eventRateSlider = document.getElementById('eventRateSlider');
-        const eventRateValue = document.getElementById('eventRateValue');
-        const applyEventRateBtn = document.getElementById('applyEventRate');
-
-        eventRateSlider.addEventListener('input', function() {
-            eventRateValue.textContent = this.value;
-        });
-
-        applyEventRateBtn.addEventListener('click', function() {
-            const newRate = parseInt(eventRateSlider.value);
-            socket.emit('update_event_rate', { events_per_sec: newRate }, { namespace: '/simulator' });
-        });
-
         // Create chart function
         function createChart(canvasId, label) {
             return new Chart(document.getElementById(canvasId), {
@@ -286,7 +261,6 @@
 
         // Handle sensor updates from Kafka
         socket.on('sensor_updated', function(data) {
-            console.log('Received sensor update:', data);
             const sensorType = data.sensor_type;
             const value = data.value;
             
@@ -342,11 +316,6 @@
                 const value = parseFloat(slider.value);
                 valueDisplay.textContent = `${value} ${unitMapping[sensorType]}`;
             }
-        });
-
-        // Listen for event rate updates
-        socket.on('event_rate', (data) => {
-            document.getElementById('eventRate').textContent = data.events_per_sec;
         });
     </script>
 </body>
