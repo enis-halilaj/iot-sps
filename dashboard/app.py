@@ -6,6 +6,7 @@ import threading
 import time
 import logging
 from datetime import datetime
+from twilio.rest import Client
 
 # Configure logging
 logging.basicConfig(
@@ -19,6 +20,39 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', logge
 
 # Socket.IO namespace for simulator
 SIMULATOR_NAMESPACE = '/simulator'
+
+# Twilio configuration
+TWILIO_ACCOUNT_SID = 'ACb972fa95bb0f7612a60d4c35adc8bdde'  # Replace with your Twilio Account SID
+TWILIO_AUTH_TOKEN = 'd48051018e8b14b53534c78801d87dce'    # Replace with your Twilio Auth Token
+TWILIO_PHONE_NUMBER = '+16074007927'  # Your Twilio phone number
+RECIPIENT_PHONE_NUMBER = '+38345988114'  # The phone number to receive SMS
+
+# Initialize Twilio client
+twilio_client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+
+def send_sms_alert(message):
+    """Send SMS alert using Twilio"""
+    try:
+        message = twilio_client.messages.create(
+            body=message,
+            from_=TWILIO_PHONE_NUMBER,
+            to=RECIPIENT_PHONE_NUMBER
+        )
+        logger.info(f"SMS sent successfully: {message.sid}")
+    except Exception as e:
+        logger.error(f"Error sending SMS: {e}")
+
+def check_distance_alarm(data):
+    """Check if distance sensor reading requires an alarm"""
+    if data['sensor_type'] == 'distance':
+        value = data['value']
+        # Critical threshold: distance less than 50cm
+        if value < 50:
+            location = data['location']
+            message = f"CRITICAL ALERT: Distance to next car is {value:.2f}cm at {location['parking_lot']}, Floor {location['floor']}, Section {location['section']}"
+            send_sms_alert(message)
+            return True
+    return False
 
 @app.route('/')
 def index():
@@ -58,6 +92,10 @@ def consume_kafka_events():
                         **data,
                         'timestamp': datetime.now().isoformat()
                     }
+                    
+                    # Check for distance alarms
+                    if check_distance_alarm(event_data):
+                        logger.info("Distance alarm triggered, SMS sent")
                     
                     # Emit the event to all connected clients
                     with app.app_context():
