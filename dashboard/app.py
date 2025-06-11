@@ -50,7 +50,7 @@ def check_distance_alarm(data):
         if value < 50:
             location = data['location']
             message = f"CRITICAL ALERT: Distance to next car is {value:.2f}cm at {location['parking_lot']}, Floor {location['floor']}, Section {location['section']}"
-            send_sms_alert(message)
+            # send_sms_alert(message)
             return True
     return False
 
